@@ -8,53 +8,134 @@
 -   [Windows](https://docs.docker.com/docker-for-windows/install/)
 -   [MacOS](https://docs.docker.com/docker-for-mac/install/)
 
-> Download and install [Docker](https://docs.docker.com/engine/installation/) (**>= 18.03**) for your platform and you also have to install [Docker compose](https://docs.docker.com/compose/install/) (**>= 1.20.0**).
+> Download and install [Docker](https://docs.docker.com/engine/installation/) (**>= 18.09**) for your platform and you also have to install [Docker compose](https://docs.docker.com/compose/install/) (**>= 1.24.0**).
 
 ## Project structure
 
 ```
+├── Makefile
 ├── docker-compose.yml
-├── elastic
-│   ├── elasticsearch.yml
-│   ├── kibana.yml
-│   └── logstash
-│       ├── config
-│       │   └── logstash.yml
-│       └── pipeline
-│           └── logstash.conf
-├── mysql
-│   └── my.cnf
+├── php
+│   └── Dockerfile
+├── app
+│   ├── Dockerfile
+│   ├── docker-entrypoint.sh
+│   ├── app.env
+│   ├── app-queue.env
+│   ├── app-scheduler.env
+│   └── config
+│       ├── php.ini-development.ini
+│       ├── php.ini-production.ini
+│       ├── extensions
+│       │   ├── opcache.ini
+│       │   └── xdebug.ini
+│       ├── fpm
+│       │   ├── php-fpm.conf
+│       │   └── www.conf
+│       └── vscode
+│           └── launch.json
+├── queue
+│   ├── Dockerfile
+│   ├── docker-entrypoint.sh
+│   └── config
+│       ├── supervisord.conf
+│       └── templates
+│           ├── laravel-horizon.conf.tpl
+│           └── laravel-worker.conf.tpl
+├── scheduler
+│   ├── Dockerfile
+│   ├── docker-entrypoint.sh
+│   └── cron-jobs
+│       └── laravel-scheduler
 ├── nginx
 │   ├── Dockerfile
+│   ├── docker-entrypoint.sh
+│   ├── certs
+│   │   ├── cert.pem
+│   │   ├── chain.pem
+│   │   ├── dhparam4096.pem
+│   │   ├── fullchain.pem
+│   │   └── privkey.pem
 │   ├── config
 │   │   ├── fastcgi.conf
 │   │   ├── mime.types
 │   │   ├── nginx.conf
-│   │   └── servers
-│   │       └── app.conf
-│   └── docker-entrypoint.sh
-├── php
-│   ├── Dockerfile
-│   ├── Dockerfile.1.0
-│   ├── config
-│   │   ├── extensions
-│   │   │   ├── opcache.ini
-│   │   │   └── xdebug.ini
-│   │   ├── fpm
-│   │   │   ├── php-fpm.conf
-│   │   │   └── www.conf
-│   │   ├── php.ini-development.ini
-│   │   └── php.ini-production.ini
-│   ├── docker-entrypoint.sh
-│   └── samples
-│       ├── bashrc
-│       └── composer.json
+│   │   ├── servers
+│   │   │   ├── admin.conf
+│   │   │   ├── api.conf
+│   │   │   ├── app.conf
+│   │   │   ├── site.conf
+│   │   │   └── webmail.conf
+│   │   └── snippets
+│   │       ├── PHP_FPM.conf
+│   │       ├── cache_expiration.conf
+│   │       ├── deny_ips.conf
+│   │       ├── real_ip.conf
+│   │       ├── security_http_headers.conf
+│   │       ├── ssl_best_practices.conf
+│   │       └── ssl_common_certificates.conf
+│   └── helpers
+│       └── cert_status.sh
 ├── redis
 │   └── redis.conf
-├── ssh
-│   ├── id_rsa
-│   └── id_rsa.pub
-└── storage
+├── mysql
+│   ├── my.cnf
+│   ├── mysql.env
+│   └── ssl
+│       ├── ca-key.pem
+│       ├── ca.pem
+│       ├── client-cert.pem
+│       ├── client-key.pem
+│       ├── private_key.pem
+│       ├── public_key.pem
+│       ├── server-cert.pem
+│       └── server-key.pem
+├── mongodb
+│   ├── mongo-init.js
+│   ├── mongod.conf
+│   └── ssl
+│       ├── mongodb.crt
+│       ├── mongodb.csr
+│       ├── mongodb.key
+│       ├── mongodb.pem
+│       ├── rootCA.key
+│       ├── rootCA.pem
+│       └── rootCA.srl
+├── elastic
+│   ├── docker-compose-setup.yml
+│   ├── docker-compose.yml
+│   ├── config
+│   │   ├── elasticsearch
+│   │   │   └── elasticsearch.yml
+│   │   ├── filebeat
+│   │   │   └── filebeat.yml
+│   │   ├── kibana
+│   │   │   └── kibana.yml
+│   │   ├── logstash
+│   │   │   ├── logstash.yml
+│   │   │   └── pipeline
+│   │   │       └── logstash.conf
+│   │   ├── metricbeat
+│   │   │   └── metricbeat.yml
+│   │   ├── packetbeat
+│   │   │   └── packetbeat.yml
+│   │   └── ssl
+│   │       ├── ca
+│   │       └── instances.yml
+│   ├── scripts
+│   │   ├── setup-beat.sh
+│   │   ├── setup-elasticsearch.sh
+│   │   ├── setup-kibana.sh
+│   │   ├── setup-logstash.sh
+│   │   ├── setup-users.sh
+│   │   └── setup.sh
+│   └── setups
+│       ├── docker-compose.setup.beats.yml
+│       ├── docker-compose.setup.elasticsearch.yml
+│       ├── docker-compose.setup.kibana.yml
+│       └── docker-compose.setup.logstash.yml
+└── traefik
+    └── traefik.toml
 ```
 
 ## Softwares included:

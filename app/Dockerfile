@@ -1,0 +1,227 @@
+#####
+## PHP Dependencies
+#####
+
+# Image base, built from the root php folder of the docker folder
+ARG PHP_BASE_IMAGE=app:base
+
+FROM composer:1.8 as vendor
+
+WORKDIR /var/www/html
+
+# https://getcomposer.org/doc/03-cli.md#composer-home
+ENV COMPOSER_HOME /composer
+
+# Copy only the files needed to download dependencies to avoid redownloading them when our code changes
+COPY composer.json composer.json
+COPY composer.json composer.lock
+
+RUN set -ex \
+        && composer global require hirak/prestissimo:"^0.3" --ansi \
+        && composer global install --prefer-dist --no-dev --no-suggest --ansi \
+        && composer config --list --global
+
+# We need to copy our whole application so that we can generate the autoload file inside the vendor folder
+# No copy unnecessary files
+COPY app/ app/
+COPY bootstrap/ bootstrap/
+COPY config/ config/
+COPY database/ database/
+COPY routes/ routes/
+COPY artisan artisan
+COPY .env.example .env.example
+
+# This will download project dependencies
+RUN set -ex \
+        && composer install \
+            --ignore-platform-reqs \
+            # --optimize-autoloader \
+            --no-autoloader \
+            --prefer-dist \
+            --ansi \
+            --no-dev \
+            --no-scripts \
+            --no-interaction
+
+RUN set -ex \
+        && composer dump-autoload --optimize --classmap-authoritative --no-dev --ansi \
+        && composer run-script post-root-package-install \
+        && composer run-script post-create-project-cmd
+
+#####
+## FRONTEND
+#####
+
+FROM node:11-alpine as frontend
+
+WORKDIR /usr/src/app
+
+# COPY package-lock.json package-lock.json
+COPY package.json webpack.mix.js ./
+COPY resources/ resources/
+
+RUN set -ex \
+        && yarn install && yarn production
+
+#####
+## APPLICATION
+#####
+
+FROM $PHP_BASE_IMAGE
+
+# Add label for documentation
+LABEL maintainer="Allyson Silva <support@allyson.tech>" \
+      description="Final image for production and use of the application in Laravel" \
+      version="prod"
+
+# Define the running user
+USER root
+
+# Local project folder
+ENV LOCAL_SRC ${LOCAL_SRC:-./}
+
+# Path docker base
+ENV DOCKER_PATH=./docker
+ENV DOCKER_APP_PATH=./docker/app
+
+# If an ARG instruction has a default value and if there is no value passed at build-time, the builder uses the default
+ARG PROJECT_ENVIRONMENT=production
+# Unlike an ARG instruction, ENV values are always persisted in the built image
+ENV PROJECT_ENVIRONMENT ${PROJECT_ENVIRONMENT:-production}
+
+# Default APP_ENV
+ARG APP_ENV=production
+ENV APP_ENV ${APP_ENV:-production}
+
+###
+## SSH - GitHub
+# Handling private packages
+# @see https://getcomposer.org/doc/05-repositories.md#using-private-repositories
+###
+# COPY $DOCKER_APP_PATH/ssh/id_rsa /home/$DEFAULT_USER/.ssh/id_rsa
+# COPY $DOCKER_APP_PATH/ssh/id_rsa.pub /home/$DEFAULT_USER/.ssh/id_rsa.pub
+
+# RUN chmod 600 /home/$DEFAULT_USER/.ssh/* \
+#         && ls -lah /home/$DEFAULT_USER/.ssh \
+#         && touch /home/$DEFAULT_USER/.ssh/known_hosts
+
+#####
+## PHP CONFIGURATIONS
+#####
+
+## EXTENSIONS
+COPY $DOCKER_APP_PATH/config/extensions/xdebug.ini ${PHP_INI_SCAN_DIR}/docker-php-ext-xdebug.ini
+COPY $DOCKER_APP_PATH/config/extensions/opcache.ini ${PHP_INI_SCAN_DIR}/docker-php-ext-opcache.ini
+
+# PHP-INI
+COPY $DOCKER_APP_PATH/config/php.ini-$PROJECT_ENVIRONMENT.ini $PHP_INI_DIR/php.ini
+# PHP-FPM
+COPY $DOCKER_APP_PATH/config/fpm/php-fpm.conf ${PHP_INI_DIR}-fpm.conf
+# PHP-FPM-POOL-WWW
+COPY $DOCKER_APP_PATH/config/fpm/www.conf ${PHP_FPM_POOL_DIR}/www.conf
+
+# Remove default files
+RUN set -ex \
+        && echo "---> Remove default files PHP-FPM" \
+        && rm ${PHP_INI_DIR}-fpm.conf.default \
+        && rm ${PHP_FPM_POOL_DIR}/www.conf.default \
+        && rm ${PHP_FPM_POOL_DIR}/docker.conf \
+        && rm ${PHP_FPM_POOL_DIR}/zz-docker.conf \
+        && rm -rf /tmp/pear ~/.pearrc
+
+# Forward request and error logs to docker log collector
+RUN set -ex \
+        && mkdir -p $PHP_LOG_PREFIX \
+        && mkdir -p /tmp/php /tmp/php/sessions /tmp/php/uploads \
+        && touch ${PHP_LOG_PREFIX}/php-fpm.access.log \
+        && touch ${PHP_LOG_PREFIX}/php-fpm.errors.log \
+        && touch ${PHP_LOG_PREFIX}/php-fpm.slow.log \
+        && touch ${PHP_LOG_PREFIX}/php.errors.log \
+        && ln -sf /dev/stderr ${PHP_LOG_PREFIX}/php-fpm.access.log \
+        && ln -sf /dev/stderr ${PHP_LOG_PREFIX}/php-fpm.errors.log
+
+#####
+## APP
+#####
+
+### Files APP
+### Copy our application
+COPY --chown=app:app $LOCAL_SRC $REMOTE_SRC
+
+## Copy the downloaded dependencies from the {vendor} stage
+COPY --from=vendor /var/www/html/vendor/ ./vendor/
+COPY --from=vendor /var/www/html/bootstrap/ ./bootstrap/
+COPY --from=vendor /var/www/html/config/ ./config/
+COPY --from=vendor /var/www/html/routes/ ./routes/
+COPY --from=vendor /var/www/html/.env.example ./.env.example
+COPY --from=vendor /var/www/html/.env ./.env
+
+## Copy from {frontend} stage
+COPY --from=frontend /usr/src/app/public/ ./public/
+COPY --from=frontend /usr/src/app/mix-manifest.json ./mix-manifest.json
+# COPY --from=frontend /usr/src/app/node_modules/ ./node_modules/
+
+###
+## Verify PHP
+###
+
+RUN set -ex \
+        && /usr/local/sbin/php-fpm --test \
+        && PHP_ERROR="$( php -v 2>&1 1>/dev/null )" \
+        && if [ -n "$PHP_ERROR" ]; then echo "$PHP_ERROR"; false; fi \
+        && php -m; php -v; php --ini
+
+###
+## PERMISSION
+###
+
+RUN set -ex \
+        && echo "---> Changing permissions" \
+        && chown -R $DEFAULT_USER:$DEFAULT_USER /usr/local/var/log $PHP_LOG_PREFIX \
+                                                /usr/local/var/run \
+                                                /usr/local/etc \
+                                                /tmp/php \
+        && fd --full-path /var/www $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \; \
+        && fd --full-path /usr/local/lib/php $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \; \
+        && fd --full-path /home/$DEFAULT_USER $DEFAULT_PARAMETERS_FD --exec chown -R $DEFAULT_USER:$DEFAULT_USER /home/$DEFAULT_USER {} \;
+
+## ENTRYPOINT
+COPY $DOCKER_APP_PATH/docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Define the running USER
+USER $DEFAULT_USER
+
+RUN set -ex && \
+        # @see https://tighten.co/blog/app-key-and-you
+        # do not change it unless you really want to:
+        #    - invalidate sessions/cookies (user logout)
+        #    - invalidate password reset tokens
+        #    - invalidate signed urls
+        # php artisan key:generate --force && \
+        # php artisan migrate | php artisan migrate --seed && \
+        # sudo find ${REMOTE_SRC} -type f -exec chmod 664 {} \; && \
+        # sudo find ${REMOTE_SRC} -type d -exec chmod 775 {} \; && \
+        DEFAULT_EXCLUDE_FD='--exclude public -E .git -E vendor' && \
+        sudo fd . $DEFAULT_EXCLUDE_FD $DEFAULT_PARAMETERS_FD --type f --exec chmod 664 {} \; && \
+        sudo fd . $DEFAULT_EXCLUDE_FD $DEFAULT_PARAMETERS_FD --type d --exec chmod 755 {} \; && \
+        sudo chgrp -R $DEFAULT_USER storage bootstrap/cache && \
+        sudo chmod -R ug+rwx storage bootstrap/cache && \
+        # sudo fd . $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \; && \
+        exa --long --links --list-dirs --group --accessed --modified --header --git *
+
+#############
+## ENTRYPOINT
+#############
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+# PHP-FPM
+EXPOSE 9000
+
+# XDEBUG
+EXPOSE 9001
+
+CMD ["/usr/local/sbin/php-fpm", "-y", "/usr/local/etc/php-fpm.conf", "--nodaemonize"]
+
+# vim:set ft=dockerfile:
