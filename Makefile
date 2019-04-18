@@ -3,12 +3,13 @@
 # include .env
 
 # Optional args
+domain_app ?= example.com
 nginx_image_name ?= webserver:3.0
 php_base_image_name ?= app:base
 app_image_name ?= app:3.0
 app_queue_image_name ?= app:queue
 app_scheduler_image_name ?= app:scheduler
-app_env ?= production
+app_env__project_environment ?= production
 
 uname_OS := $(shell uname -s)
 user_UID := 1001
@@ -18,13 +19,13 @@ ifeq ($(uname_OS),Linux)
 	user_GID := $(shell id -g)
 endif
 
-# Detect operating system in Makefile
+# # Detect operating system in Makefile
 # OSFLAG:=
 # ifeq ($(OS),Windows_NT)
 # 	OSFLAG += -D WIN32
-#     ifeq ($(PROCESSOR_ARCHITEW6432),AMD64)
-# 		OSFLAG += -D AMD64
-#     else
+# 		ifeq ($(PROCESSOR_ARCHITEW6432),AMD64)
+# 			OSFLAG += -D AMD64
+# 		else
 # 		ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)
 # 			OSFLAG += -D AMD64
 # 		endif
@@ -62,7 +63,7 @@ help:
 	@echo "  build-nginx         Build the NGINX image to act as a reverse proxy [?nginx_image_name=]"
 	@echo "  in-nginx            Access the NGINX container"
 	@echo "  build-php           Build the base image of projects in PHP [?php_base_image_name=]"
-	@echo "  build-app           Build the image with settings for Laravel/PHP projects [?app_env=production||development ?app_image_name=]"
+	@echo "  build-app           Build the image with settings for Laravel/PHP projects [?app_env__project_environment=production||development ?app_image_name=]"
 	@echo "  run-app             Create a container for the application with docker run"
 	@echo "  build-queue         Build the image to act as queue management. Extends the default project image (build-app) [?app_queue_image_name=]"
 	@echo "  build-scheduler     Build the image to act as scheduler management. Extends the default project image (build-app) [?app_scheduler_image_name=]"
@@ -72,7 +73,8 @@ help:
 	@echo "  run-traefik         Create a container for the traefik with docker run"
 	@echo "  docker-stop         Stop and execute $$> make docker-clean"
 	@echo "  composer-up         Update PHP dependencies with composer"
-	@echo "  gen-certs           Generate SSL certificates. Obs.: (Change domain from example.com to real domain)"
+	@echo "  gen-certs           Generate SSL certificates. [domain_app ?= example.com]"
+	@echo "  get-certs           Retrieves certificate expiration dates"
 	@echo "  mysql-dump          Create backup of all databases"
 	@echo "  mysql-restore       Restore backup of all databases"
 
@@ -104,21 +106,21 @@ build-nginx:
 in-nginx:
 	docker exec -ti webserver bash
 
-# $> make build-nginx php_base_image_name=php:base
+# $> make build-php php_base_image_name=php:base
 build-php:
 	docker build -t ${php_base_image_name} \
 		--build-arg DEFAULT_USER_UID=${user_UID} \
 		--build-arg DEFAULT_USER_GID=${user_GID} \
 	- < ./php/Dockerfile
 
-# make build-app app_env=production||development app_image_name=app:3.0
+# $> make build-app app_env__project_environment=production||development app_image_name=app:3.0
 build-app:
 	docker build -t ${app_image_name} -f ./app/Dockerfile \
-		--build-arg APP_ENV=${app_env} \
-		--build-arg PROJECT_ENVIRONMENT=${app_env} \
+		--build-arg APP_ENV=${app_env__project_environment} \
+		--build-arg PROJECT_ENVIRONMENT=${app_env__project_environment} \
 	./../
 
-# php artisan serve --port=8080 --host=0.0.0.0
+# $> php artisan serve --port=8080 --host=0.0.0.0
 run-app:
 	docker run \
 			--rm \
@@ -126,8 +128,8 @@ run-app:
 			-p 8081:8080 \
 			-v $(shell pwd)/../:/var/www/app \
 			-v $(shell pwd)/app/docker-entrypoint.sh:/entrypoint.sh \
-			--env "PROJECT_ENVIRONMENT=${app_env}" \
-			--env "APP_ENV=${app_env}" \
+			--env "PROJECT_ENVIRONMENT=${app_env__project_environment}" \
+			--env "APP_ENV=${app_env__project_environment}" \
 			--user ${user_UID}:${user_GID} \
 			--name=app \
 			--hostname=app \
@@ -175,6 +177,7 @@ docker-stop:
 	@docker-compose down -v
 	@make docker-clean
 
+# $> make gen-certs domain_app=mydomain.com
 gen-certs:
 	@docker run \
 			--name certbot \
@@ -186,12 +189,12 @@ gen-certs:
 				--manual \
 				--manual-public-ip-logging-ok \
 				--eff-email \
-				-d "*.example.com" -d example.com \
+				-d "*.${domain_app}" -d ${domain_app} \
 				--agree-tos \
-				--cert-name example.com \
+				--cert-name ${domain_app} \
 				--preferred-challenges dns-01 \
 				--server https://acme-v02.api.letsencrypt.org/directory \
-				--email support@example.com \
+				--email support@${domain_app} \
 				--rsa-key-size 4096 \
 				--no-bootstrap
 

@@ -43,7 +43,7 @@ ENV PHP_AMQP_VERSION 1.9.4
 # Event-driven asynchronous and concurrent networking engine with high performance for PHP.
 # https://github.com/swoole/swoole-src
 ARG INSTALL_PHP_SWOOLE=false
-ENV PHP_SWOOLE_VERSION 4.3.1
+ENV PHP_SWOOLE_VERSION 4.3.2
 
 # Install the PHP EXTENSIONS
 RUN set -eux; \

@@ -22,6 +22,17 @@ if [ -f ${PHP_INI_SCAN_DIR}/docker-php-ext-opcache.ini ]; then
     rm ${PHP_INI_SCAN_DIR}/docker-php-ext-opcache.ini
 fi
 
+if [ -z "$APP_ENV" ]; then
+    log "err" 'A $APP_ENV environment is required to run this container'
+    exit 1
+fi
+
+# If the application key is not set, your user sessions and other encrypted data will not be secure!
+if [ -z "$APP_KEY" ]; then
+    log "err" 'A $APP_KEY environment is required to run this container'
+    exit 1
+fi
+
 echo
 echo "Laravel - Clear all"
 echo
@@ -45,8 +56,8 @@ echo "Starting [CRON]"
 echo
 
 # Add to cron
-sudo sed -i -e "s|%%USER%%|$DEFAULT_USER|g" \
-         -i -e "s|%%REMOTE_SRC%%|${REMOTE_SRC}|g" /etc/cron.d/laravel-scheduler
+sudo sed -i -e "s|{{USER}}|$DEFAULT_USER|g" \
+         -i -e "s|{{REMOTE_SRC}}|${REMOTE_SRC}|g" /etc/cron.d/laravel-scheduler
 # crontab -l | { cat; echo "* * * * * ${DEFAULT_USER} /usr/local/bin/php ${REMOTE_SRC}artisan schedule:run >> /dev/null 2>&1"; } | crontab -
 
 # while [ true ]

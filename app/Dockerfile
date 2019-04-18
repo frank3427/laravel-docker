@@ -45,8 +45,8 @@ RUN set -ex \
 
 RUN set -ex \
         && composer dump-autoload --optimize --classmap-authoritative --no-dev --ansi \
-        && composer run-script post-root-package-install \
-        && composer run-script post-create-project-cmd
+        && composer run-script post-root-package-install
+        # && composer run-script post-create-project-cmd
 
 #####
 ## FRONTEND
@@ -123,6 +123,7 @@ COPY $DOCKER_APP_PATH/config/fpm/www.conf ${PHP_FPM_POOL_DIR}/www.conf
 # Remove default files
 RUN set -ex \
         && echo "---> Remove default files PHP-FPM" \
+        \
         && rm ${PHP_INI_DIR}-fpm.conf.default \
         && rm ${PHP_FPM_POOL_DIR}/www.conf.default \
         && rm ${PHP_FPM_POOL_DIR}/docker.conf \
@@ -133,10 +134,12 @@ RUN set -ex \
 RUN set -ex \
         && mkdir -p $PHP_LOG_PREFIX \
         && mkdir -p /tmp/php /tmp/php/sessions /tmp/php/uploads \
+        \
         && touch ${PHP_LOG_PREFIX}/php-fpm.access.log \
         && touch ${PHP_LOG_PREFIX}/php-fpm.errors.log \
         && touch ${PHP_LOG_PREFIX}/php-fpm.slow.log \
         && touch ${PHP_LOG_PREFIX}/php.errors.log \
+        \
         && ln -sf /dev/stderr ${PHP_LOG_PREFIX}/php-fpm.access.log \
         && ln -sf /dev/stderr ${PHP_LOG_PREFIX}/php-fpm.errors.log
 
@@ -153,6 +156,7 @@ COPY --from=vendor /var/www/html/vendor/ ./vendor/
 COPY --from=vendor /var/www/html/bootstrap/ ./bootstrap/
 COPY --from=vendor /var/www/html/config/ ./config/
 COPY --from=vendor /var/www/html/routes/ ./routes/
+
 COPY --from=vendor /var/www/html/.env.example ./.env.example
 COPY --from=vendor /var/www/html/.env ./.env
 

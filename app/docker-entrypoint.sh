@@ -92,7 +92,13 @@ sed -i "/;catch_workers_output = .*/c\catch_workers_output = yes" ${PHP_FPM_POOL
 ####
 
 if [ -z "$APP_ENV" ]; then
-    log "err" "A APP_ENV environment is required to run this container"
+    log "err" 'A $APP_ENV environment is required to run this container'
+    exit 1
+fi
+
+# If the application key is not set, your user sessions and other encrypted data will not be secure!
+if [ -z "$APP_KEY" ]; then
+    log "err" 'A $APP_KEY environment is required to run this container'
     exit 1
 fi
 
@@ -102,7 +108,7 @@ if [ ! -d "vendor" ]; then
     run "composer install --prefer-dist --no-interaction --optimize-autoloader --no-dev"
     run "composer dump-autoload --optimize"
     run "composer run-script post-root-package-install"
-    run "composer run-script post-create-project-cmd"
+    # run "composer run-script post-create-project-cmd"
     run "composer run-script post-autoload-dump"
 fi
 
@@ -156,10 +162,21 @@ if [ "$PROJECT_ENVIRONMENT" == "development" ]; then
         -e "/pm.start_servers = .*/c\pm.start_servers = 4" \
         -e "/pm.min_spare_servers = .*/c\pm.min_spare_servers = 2" \
         -e "/pm.max_spare_servers = .*/c\pm.max_spare_servers = 6" \
-        -e "/pm.max_requests = .*/c\pm.max_requests = 100" \
+        -e "/pm.max_requests = .*/c\pm.max_requests = 500" \
         -e "/rlimit_files = .*/c\;rlimit_files = " \
         -e "/rlimit_core = .*/c\;rlimit_core = " \
     ${PHP_FPM_POOL_DIR}/www.conf
+
+    # sed -i \
+    #         -e "/pm = .*/c\pm = dynamic" \
+    #         -e "/pm.max_children = .*/c\pm.max_children = 25" \
+    #         -e "/pm.start_servers = .*/c\pm.start_servers = 10" \
+    #         -e "/pm.min_spare_servers = .*/c\pm.min_spare_servers = 5" \
+    #         -e "/pm.max_spare_servers = .*/c\pm.max_spare_servers = 10" \
+    #         -e "/pm.max_requests = .*/c\pm.max_requests = 1000" \
+    #         -e "/rlimit_files = .*/c\rlimit_files = 131072" \
+    #         -e "/rlimit_core = .*/c\rlimit_core = unlimited" \
+    # ${PHP_FPM_POOL_DIR}/www.conf
 
     # { \
     #     echo '[global]'; \
@@ -203,13 +220,90 @@ if [ "$PROJECT_ENVIRONMENT" == "development" ]; then
         $PHP_INI_DIR/php.ini
 fi
 
+configure_env() {
+    echo "Initializing CONTAINER ..."
+
+    APP_KEY=${APP_KEY:-}
+
+    if [[ "${DB_DRIVER}" = "sqlite" ]]; then
+        DB_DATABASE=""
+        DB_HOST=""
+        DB_PORT=""
+        DB_USERNAME=""
+        DB_PASSWORD=""
+    fi
+
+    # Configure ENV file
+
+    sed 's,{{APP_ENV}},'"${APP_ENV}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{APP_DEBUG}},'"${APP_DEBUG}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{APP_URL}},'"${APP_URL}"',g' -i $REMOTE_SRC/.env
+
+    sed 's,{{DB_CONNECTION}},'"${DB_CONNECTION}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{DB_HOST}},'"${DB_HOST}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{DB_PORT}},'"${DB_PORT}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{DB_DATABASE}},'"${DB_DATABASE}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{DB_USERNAME}},'"${DB_USERNAME}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{DB_PASSWORD}},'"${DB_PASSWORD}"',g' -i $REMOTE_SRC/.env
+
+    sed 's,{{BROADCAST_DRIVER}},'"${BROADCAST_DRIVER}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{CACHE_DRIVER}},'"${CACHE_DRIVER}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{QUEUE_CONNECTION}},'"${QUEUE_CONNECTION}"',g' -i $REMOTE_SRC/.env
+
+    sed 's,{{SESSION_DRIVER}},'"${SESSION_DRIVER}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{SESSION_DOMAIN}},'"${SESSION_DOMAIN}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{SESSION_SECURE_COOKIE}},'"${SESSION_SECURE_COOKIE}"',g' -i $REMOTE_SRC/.env
+
+    sed 's,{{REDIS_HOST}},'"${REDIS_HOST}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{REDIS_PORT}},'"${REDIS_PORT}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{REDIS_PASSWORD}},'"${REDIS_PASSWORD}"',g' -i $REMOTE_SRC/.env
+
+    sed 's,{{MAIL_DRIVER}},'"${MAIL_DRIVER}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{MAIL_HOST}},'"${MAIL_HOST}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{MAIL_PORT}},'"${MAIL_PORT}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{MAIL_USERNAME}},'"${MAIL_USERNAME}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{MAIL_PASSWORD}},'"${MAIL_PASSWORD}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{MAIL_FROM_ADDRESS}},'"${MAIL_FROM_ADDRESS}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{MAIL_FROM_NAME}},'"${MAIL_FROM_NAME}"',g' -i $REMOTE_SRC/.env
+    sed 's,{{MAIL_ENCRYPTION}},'"${MAIL_ENCRYPTION}"',g' -i $REMOTE_SRC/.env
+
+    if [[ -z "${APP_KEY}" || "${APP_KEY}" = "null" ]]; then
+        keygen="$(php artisan key:generate)"
+        APP_KEY=$(echo "${keygen}" | grep -oP '(?<=\[).*(?=\])')
+        echo "ERROR: Please set the 'APP_KEY=${APP_KEY}' environment variable at runtime or in docker-compose.yml and re-launch"
+        exit 0
+    fi
+
+    sed "s,{{APP_KEY}},$APP_KEY,g" -i $REMOTE_SRC/.env
+
+    # Remove empty lines
+    sed '/^.*=""$/d'  -i $REMOTE_SRC/.env
+}
+
+migrate_db() {
+    force=""
+    if [[ "${FORCE_MIGRATION:-false}" == true ]]; then
+        force="--force"
+    fi
+    php artisan migrate ${force}
+}
+
+seed_db() {
+    php artisan db:seed
+}
+
+start_app() {
+    configure_env
+    migrate_db
+    seed_db
+}
+
+start_app
+
 run "php --ini"
 run "php -v"
 
 log "ok" "[PHP-FPM] Init process complete; Ready for start up."
-
-unset DB_USER
-unset DB_PASSWORD
 
 ## Run the original command
 exec "$@"

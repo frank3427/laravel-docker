@@ -123,7 +123,7 @@ services:
             retries: 3
 
     # # mongo --ssl \
-    # #       --sslCAFile rootCA.pem --sslPEMKeyFile mongodb.pem \
+    # #       --sslCAFile /etc/ssl/ca.pem --sslPEMKeyFile /etc/ssl/mongodb.pem \
     # #       --host 127.0.0.1 --port 29019 -u "root" -p "secret" --authenticationDatabase admin
     # # @see https://medium.com/@rajanmaharjan/secure-your-mongodb-connections-ssl-tls-92e2addb3c89
     mongodb:
@@ -241,7 +241,7 @@ services:
         container_name: queue
         working_dir: ${REMOTE_SRC}
         env_file:
-            - ./app/app-queue.env
+            - ./queue/queue.env
         environment:
             REMOTE_SRC: ${REMOTE_SRC}
         depends_on: ['redis', 'database', 'app']
@@ -258,7 +258,7 @@ services:
         container_name: scheduler
         working_dir: ${REMOTE_SRC}
         env_file:
-            - ./app/app-scheduler.env
+            - ./scheduler/scheduler.env
         environment:
             REMOTE_SRC: ${REMOTE_SRC}
         depends_on: ['redis', 'database', 'app']

@@ -13,22 +13,6 @@ LABEL   maintainer="Allyson Silva <support@allyson.tech>" \
 # Define the running user
 USER root
 
-# Laravel Queue
-# Defines Redis as queue database.
-ENV QUEUE_DRIVER=${QUEUE_DRIVER:-redis}
-ENV QUEUE_CONNECTION=${QUEUE_CONNECTION:-redis}
-ENV QUEUE_NAME=${QUEUE_NAME:-default}
-
-# Redis Configuration
-ENV REDIS_HOST=${REDIS_HOST:-redis}
-ENV REDIS_PORT=${REDIS_PORT:-6379}
-
-# Laravel Horizon
-ENV LARAVEL_HORIZON_ENABLED=true
-
-# Disable xdebug by default
-ENV XDEBUG_ENABLED=false
-
 # Path config/Dockerfile Queue
 ENV DOCKER_QUEUE_PATH=./docker/queue
 
