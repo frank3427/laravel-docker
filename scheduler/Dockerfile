@@ -13,8 +13,10 @@ LABEL   maintainer="Allyson Silva <support@allyson.tech>" \
 # Define the running user
 USER root
 
-# Path config/Dockerfile Scheduler
-ENV DOCKER_SCHEDULER_PATH=./docker/scheduler
+# Path docker SCHEDULER folder
+# Path Config/Dockerfile SCHEDULER
+ARG DOCKER_SCHEDULER_PATH=${DOCKER_FOLDER_PATH}/scheduler
+ENV DOCKER_SCHEDULER_PATH ${DOCKER_SCHEDULER_PATH}
 
 ####
 ## SUPPORT PACKAGES

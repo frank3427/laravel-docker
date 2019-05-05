@@ -3,6 +3,15 @@ FROM nginx:1.15
 ARG BUILD_DATE
 ARG VCS_REF
 
+# If an ARG instruction has a default value and if there is no value passed at build-time, the builder uses the default
+ARG DOMAIN_APP
+# Unlike an ARG instruction, ENV values are always persisted in the built image
+ENV DOMAIN_APP ${DOMAIN_APP:-app.com}
+
+# Application prefix path
+ARG APP_PATH_PREFIX
+ENV APP_PATH_PREFIX ${APP_PATH_PREFIX:-/var/www}
+
 LABEL   maintainer="Allyson Silva <support@allyson.tech>" \
         description="Image for handling requests, server requests" \
         version="nginx" \

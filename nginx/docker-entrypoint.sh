@@ -21,8 +21,6 @@ TZ=${TZ:-UTC}
 HSTS_HEADER=${HSTS_HEADER:-max-age=31536000; includeSubdomains; preload}
 RP_HEADER=${RP_HEADER:-strict-origin-when-cross-origin}
 
-DOMAIN_APP=${DOMAIN_APP:-example.com}
-
 # Timezone
 echo "Setting Timezone to ${TZ} ..."
 ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime
@@ -34,7 +32,11 @@ echo "Setting Nginx configuration ..."
 find /etc/nginx -type f -exec sed -i \
                                         -e "s/\\\.example\\\.com/\\\.$(echo $DOMAIN_APP | sed 's/\./\\\\./g')/g" \
                                         -e "s/example\\\.com/$(echo $DOMAIN_APP | sed 's/\./\\\\./g')/g" \
-                                        -e "s/@DOMAIN_APP@/$DOMAIN_APP/g" \
+                                    {} \;
+
+find /etc/nginx -type f -exec sed -i \
+                                        -e "s|{{DOMAIN_APP}}|$DOMAIN_APP|g" \
+                                        -e "s,{{APP_PATH_PREFIX}},$APP_PATH_PREFIX,g" \
                                     {} \;
 
 sed -i \
@@ -45,7 +47,7 @@ sed -i \
 rm /etc/nginx/servers/app.conf
 
 # echo "Fixing permissions..."
-# fixperms /var/www/app /var/cache/nginx
+# fixperms "$APP_PATH_PREFIX/app" /var/cache/nginx
 # echo "Installing APP"
 # runas_nginx "php artisan serve --port=8080 &>/dev/null"
 

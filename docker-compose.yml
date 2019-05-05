@@ -34,7 +34,7 @@ services:
     #     labels:
     #         traefik.enable: "true"
     #         traefik.backend: "traefik"
-    #         traefik.frontend.rule: "Host:traefik.example.com"
+    #         traefik.frontend.rule: "Host:traefik.app.com"
     #         traefik.port: "8099"
     #     expose:
     #         # Traefik dashboard port
@@ -60,7 +60,7 @@ services:
     #     image: containous/whoami
     #     labels:
     #         traefik.enable: true
-    #         traefik.frontend.rule: "Host:whoami.example.com"
+    #         traefik.frontend.rule: "Host:whoami.app.com"
     #     networks:
     #         NetTraefik:
 
@@ -160,7 +160,7 @@ services:
             - "${PORT_HTTPS}:443"
         labels:
             - traefik.enable=true
-            - traefik.frontend.rule=Host:www.example.com
+            - traefik.frontend.rule=Host:www.app.com
         networks:
             NetworkApp:
                 ipv4_address: 172.31.1.5
@@ -194,7 +194,7 @@ services:
         container_name: app
         build:
             context: ${LOCAL_SRC}
-            dockerfile: ./docker/app/Dockerfile
+            dockerfile: ${DOCKER_FOLDER_PATH}/app/Dockerfile
             args:
                 PROJECT_ENVIRONMENT: ${PROJECT_ENVIRONMENT}
         working_dir: ${REMOTE_SRC}

@@ -10,11 +10,13 @@ LABEL   maintainer="Allyson Silva <support@allyson.tech>" \
         description="Image for manipulation/handling of queues" \
         version="queue"
 
+# Path docker QUEUE folder
+# Path Config/Dockerfile QUEUE
+ARG DOCKER_QUEUE_PATH=${DOCKER_FOLDER_PATH}/queue
+ENV DOCKER_QUEUE_PATH ${DOCKER_QUEUE_PATH}
+
 # Define the running user
 USER root
-
-# Path config/Dockerfile Queue
-ENV DOCKER_QUEUE_PATH=./docker/queue
 
 ####
 ## SUPPORT PACKAGES

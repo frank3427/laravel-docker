@@ -1,20 +1,20 @@
+# Image base, built from the root php folder of the docker folder
+ARG PHP_BASE_IMAGE
+
 #####
 ## PHP Dependencies
 #####
 
-# Image base, built from the root php folder of the docker folder
-ARG PHP_BASE_IMAGE=app:base
-
 FROM composer:1.8 as vendor
 
-WORKDIR /var/www/html
+WORKDIR /app
 
 # https://getcomposer.org/doc/03-cli.md#composer-home
 ENV COMPOSER_HOME /composer
 
 # Copy only the files needed to download dependencies to avoid redownloading them when our code changes
 COPY composer.json composer.json
-COPY composer.json composer.lock
+COPY composer.lock composer.lock
 
 RUN set -ex \
         && composer global require hirak/prestissimo:"^0.3" --ansi \
@@ -46,6 +46,7 @@ RUN set -ex \
 RUN set -ex \
         && composer dump-autoload --optimize --classmap-authoritative --no-dev --ansi \
         && composer run-script post-root-package-install
+        # # do not run php artisan key:generate --ansi
         # && composer run-script post-create-project-cmd
 
 #####
@@ -54,7 +55,7 @@ RUN set -ex \
 
 FROM node:11-alpine as frontend
 
-WORKDIR /usr/src/app
+WORKDIR /app
 
 # COPY package-lock.json package-lock.json
 COPY package.json webpack.mix.js ./
@@ -71,18 +72,33 @@ FROM $PHP_BASE_IMAGE
 
 # Add label for documentation
 LABEL maintainer="Allyson Silva <support@allyson.tech>" \
-      description="Final image for production and use of the application in Laravel" \
-      version="prod"
+        description="Final image for production and use of the application in Laravel" \
+        version="prod"
 
-# Define the running user
-USER root
+# If an ARG instruction has a default value and if there is no value passed at build-time, the builder uses the default
+ARG DOMAIN_APP
+# Unlike an ARG instruction, ENV values are always persisted in the built image
+ENV DOMAIN_APP ${DOMAIN_APP:-app.com}
+
+# Application prefix path
+ARG APP_PATH_PREFIX
+ENV APP_PATH_PREFIX ${APP_PATH_PREFIX:-/var/www}
+
+# Path docker base
+ARG DOCKER_FOLDER_PATH=./docker
+ENV DOCKER_FOLDER_PATH ${DOCKER_FOLDER_PATH:-./docker}
+
+# Path docker APP folder
+# Path Config/Dockerfile APP
+ARG DOCKER_APP_PATH=${DOCKER_FOLDER_PATH}/app
+ENV DOCKER_APP_PATH ${DOCKER_APP_PATH}
+
+# Default directory for application deployment
+# Location of the folder in the container, path of the folder inside the container
+ENV REMOTE_SRC ${APP_PATH_PREFIX}/${DOMAIN_APP}/
 
 # Local project folder
 ENV LOCAL_SRC ${LOCAL_SRC:-./}
-
-# Path docker base
-ENV DOCKER_PATH=./docker
-ENV DOCKER_APP_PATH=./docker/app
 
 # If an ARG instruction has a default value and if there is no value passed at build-time, the builder uses the default
 ARG PROJECT_ENVIRONMENT=production
@@ -92,6 +108,13 @@ ENV PROJECT_ENVIRONMENT ${PROJECT_ENVIRONMENT:-production}
 # Default APP_ENV
 ARG APP_ENV=production
 ENV APP_ENV ${APP_ENV:-production}
+
+# Application directory
+# Sets the working directory for any RUN, CMD, ENTRYPOINT, COPY and ADD instructions that follow it in the Dockerfile.
+WORKDIR $REMOTE_SRC
+
+# Define the running user
+USER root
 
 ###
 ## SSH - GitHub
@@ -147,23 +170,36 @@ RUN set -ex \
 ## APP
 #####
 
+# Check if the path/folder of the $REMOTE_SRC variable does not exist
+RUN     if [ ! -d "$REMOTE_SRC" ]; then \
+                mkdir -p $REMOTE_SRC \
+                && chown -R $DEFAULT_USER:$DEFAULT_USER $REMOTE_SRC \
+        ;fi
+
 ### Files APP
 ### Copy our application
 COPY --chown=app:app $LOCAL_SRC $REMOTE_SRC
 
-## Copy the downloaded dependencies from the {vendor} stage
-COPY --from=vendor /var/www/html/vendor/ ./vendor/
-COPY --from=vendor /var/www/html/bootstrap/ ./bootstrap/
-COPY --from=vendor /var/www/html/config/ ./config/
-COPY --from=vendor /var/www/html/routes/ ./routes/
+# Remove folder docker
+RUN     if [ -d docker ]; then \
+            rm -rf docker \
+        ;fi
 
-COPY --from=vendor /var/www/html/.env.example ./.env.example
-COPY --from=vendor /var/www/html/.env ./.env
+## Copy the downloaded dependencies from the {vendor} stage
+COPY --from=vendor /app/vendor/ ./vendor/
+COPY --from=vendor /app/composer.json ./composer.json
+COPY --from=vendor /app/composer.lock ./composer.lock
+COPY --from=vendor /app/bootstrap/ ./bootstrap/
+COPY --from=vendor /app/config/ ./config/
+COPY --from=vendor /app/routes/ ./routes/
+
+COPY --from=vendor /app/.env.example ./.env.example
+COPY --from=vendor /app/.env ./.env
 
 ## Copy from {frontend} stage
-COPY --from=frontend /usr/src/app/public/ ./public/
-COPY --from=frontend /usr/src/app/mix-manifest.json ./mix-manifest.json
-# COPY --from=frontend /usr/src/app/node_modules/ ./node_modules/
+COPY --from=frontend /app/public/ ./public/
+COPY --from=frontend /app/mix-manifest.json ./mix-manifest.json
+# COPY --from=frontend /app/node_modules/ ./node_modules/
 
 ###
 ## Verify PHP
@@ -185,9 +221,9 @@ RUN set -ex \
                                                 /usr/local/var/run \
                                                 /usr/local/etc \
                                                 /tmp/php \
-        && fd --full-path /var/www $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \; \
-        && fd --full-path /usr/local/lib/php $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \; \
-        && fd --full-path /home/$DEFAULT_USER $DEFAULT_PARAMETERS_FD --exec chown -R $DEFAULT_USER:$DEFAULT_USER /home/$DEFAULT_USER {} \;
+        && fd . $APP_PATH_PREFIX $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \; \
+        && fd . /usr/local/lib/php $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \; \
+        && fd . /home/$DEFAULT_USER $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \;
 
 ## ENTRYPOINT
 COPY $DOCKER_APP_PATH/docker-entrypoint.sh /entrypoint.sh
@@ -211,6 +247,7 @@ RUN set -ex && \
         sudo fd . $DEFAULT_EXCLUDE_FD $DEFAULT_PARAMETERS_FD --type d --exec chmod 755 {} \; && \
         sudo chgrp -R $DEFAULT_USER storage bootstrap/cache && \
         sudo chmod -R ug+rwx storage bootstrap/cache && \
+        # sudo chown -R $DEFAULT_USER:$DEFAULT_USER $REMOTE_SRC && \
         # sudo fd . $DEFAULT_PARAMETERS_FD --exec chown $DEFAULT_USER:$DEFAULT_USER {} \; && \
         exa --long --links --list-dirs --group --accessed --modified --header --git *
 

@@ -9,17 +9,21 @@ LABEL   maintainer="Allyson Silva <support@allyson.tech>" \
 ## DEFAULT CONFIGURATIONS
 ####
 
+# If an ARG instruction has a default value and if there is no value passed at build-time, the builder uses the default
 ARG DEFAULT_USER=app
-ARG DEFAULT_USER_UID=1000
-ARG DEFAULT_USER_GID=1000
+# Unlike an ARG instruction, ENV values are always persisted in the built image
+ENV DEFAULT_USER ${DEFAULT_USER}
 
-# Unlike an ARG instruction, ENV values are always persisted in the built image.
-# Environment variables defined using the ENV instruction always override an ARG instruction of the same name.
-ENV DEFAULT_USER $DEFAULT_USER
+ARG DEFAULT_USER_UID=1000
+ENV DEFAULT_USER_UID ${DEFAULT_USER_UID}
+
+ARG DEFAULT_USER_GID=1000
+ENV DEFAULT_USER_GID ${DEFAULT_USER_GID}
 
 # Default directory for application deployment
 # Location of the folder in the container, path of the folder inside the container
-ENV REMOTE_SRC ${REMOTE_SRC:-/var/www/app/}
+ARG REMOTE_SRC=/var/www/app/
+ENV REMOTE_SRC $REMOTE_SRC
 
 # = /usr/local/etc/php || (./configure --with-config-file-path="$PHP_INI_DIR")
 ENV PHP_INI_DIR ${PHP_INI_DIR:-/usr/local/etc/php}

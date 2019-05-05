@@ -1,9 +1,9 @@
 #!/bin/bash
 
-set -ex # Exit immediately if a command exits with a non-zero status
+set -ex
 
 ########
-## QUEUE CONFIG
+## QUEUE ENTRYPOINT
 ########
 
 # worker or horizon
@@ -18,6 +18,13 @@ fi
 if [ -z "$APP_KEY" ]; then
     log "err" 'A $APP_KEY environment is required to run this container'
     exit 1
+fi
+
+if [ "$(stat -c "%U:%G" $REMOTE_SRC)" != "$DEFAULT_USER:$DEFAULT_USER" ]; then
+    log "info" "Creating $REMOTE_SRC and changing container user permission"
+
+    mkdir -p $REMOTE_SRC
+    sudo chown -R $DEFAULT_USER:$DEFAULT_USER $REMOTE_SRC
 fi
 
 # Increase the memory_limit

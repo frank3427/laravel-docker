@@ -3,7 +3,7 @@
 # include .env
 
 # Optional args
-domain_app ?= example.com
+domain_app ?= app.com
 nginx_image_name ?= webserver:3.0
 php_base_image_name ?= app:base
 app_image_name ?= app:3.0
@@ -60,20 +60,20 @@ help:
 	@echo "Commands:"
 	@echo "  pull                Download images"
 	@echo "  build               Build project images"
-	@echo "  build-nginx         Build the NGINX image to act as a reverse proxy [?nginx_image_name=]"
+	@echo "  build-nginx         Build the NGINX image to act as a reverse proxy [nginx_image_name=webserver:3.0] [domain_app=app.com]"
 	@echo "  in-nginx            Access the NGINX container"
-	@echo "  build-php           Build the base image of projects in PHP [?php_base_image_name=]"
-	@echo "  build-app           Build the image with settings for Laravel/PHP projects [?app_env__project_environment=production||development ?app_image_name=]"
+	@echo "  build-php           Build the base image of projects in PHP [php_base_image_name=app:base]"
+	@echo "  build-app           Build the image with settings for Laravel/PHP projects [app_env__project_environment=production||development] [app_image_name=app:3.0] [domain_app=app.com]"
 	@echo "  run-app             Create a container for the application with docker run"
-	@echo "  build-queue         Build the image to act as queue management. Extends the default project image (build-app) [?app_queue_image_name=]"
-	@echo "  build-scheduler     Build the image to act as scheduler management. Extends the default project image (build-app) [?app_scheduler_image_name=]"
+	@echo "  build-queue         Build the image to act as queue management. Extends the default project image (build-app) [app_queue_image_name=]"
+	@echo "  build-scheduler     Build the image to act as scheduler management. Extends the default project image (build-app) [app_scheduler_image_name=]"
 	@echo "  app-code-phpcs      Check the APP with PHP Code Sniffer (PSR2)"
-	@echo "  app-code-phpmd      Analyse the API with PHP Mess Detector"
+	@echo "  app-code-phpmd      Analyse the APP with PHP Mess Detector"
 	@echo "  docker-clean        Remove docker images with filter <none>"
 	@echo "  run-traefik         Create a container for the traefik with docker run"
 	@echo "  docker-stop         Stop and execute $$> make docker-clean"
 	@echo "  composer-up         Update PHP dependencies with composer"
-	@echo "  gen-certs           Generate SSL certificates. [domain_app ?= example.com]"
+	@echo "  gen-certs           Generate SSL certificates [domain_app=app.com]"
 	@echo "  get-certs           Retrieves certificate expiration dates"
 	@echo "  mysql-dump          Create backup of all databases"
 	@echo "  mysql-restore       Restore backup of all databases"
@@ -96,9 +96,10 @@ build:
 	make build-queue
 	make build-scheduler
 
-# $> make build-nginx nginx_image_name=webserver:nginx
+# $> make build-nginx nginx_image_name=webserver:3.0 domain_app=mydomain.com
 build-nginx:
 	docker build -t ${nginx_image_name} -f ./nginx/Dockerfile \
+		--build-arg DOMAIN_APP=${domain_app} \
 		--build-arg BUILD_DATE=$(shell date +'%Y-%m-%d') \
 		--build-arg VCS_REF=3.0 \
 	./nginx
@@ -106,16 +107,19 @@ build-nginx:
 in-nginx:
 	docker exec -ti webserver bash
 
-# $> make build-php php_base_image_name=php:base
+# $> make build-php php_base_image_name=app:base
 build-php:
 	docker build -t ${php_base_image_name} \
+		--build-arg DEFAULT_USER=app \
 		--build-arg DEFAULT_USER_UID=${user_UID} \
 		--build-arg DEFAULT_USER_GID=${user_GID} \
 	- < ./php/Dockerfile
 
-# $> make build-app app_env__project_environment=production||development app_image_name=app:3.0
+# $> make build-app app_env__project_environment=production||development app_image_name=app:3.0 domain_app=mydomain.com
 build-app:
 	docker build -t ${app_image_name} -f ./app/Dockerfile \
+		--build-arg PHP_BASE_IMAGE=${php_base_image_name} \
+		--build-arg DOMAIN_APP=${domain_app} \
 		--build-arg APP_ENV=${app_env__project_environment} \
 		--build-arg PROJECT_ENVIRONMENT=${app_env__project_environment} \
 	./../
@@ -126,8 +130,9 @@ run-app:
 			--rm \
 			-p 9001:9001 \
 			-p 8081:8080 \
-			-v $(shell pwd)/../:/var/www/app \
-			-v $(shell pwd)/app/docker-entrypoint.sh:/entrypoint.sh \
+			-v $(shell pwd)/../:/var/www/${domain_app}/ \
+			-v $(shell pwd)/app/docker-entrypoint.sh:/entrypoint.sh:ro \
+			--env "APP_KEY=SomeRandomString" \
 			--env "PROJECT_ENVIRONMENT=${app_env__project_environment}" \
 			--env "APP_ENV=${app_env__project_environment}" \
 			--user ${user_UID}:${user_GID} \

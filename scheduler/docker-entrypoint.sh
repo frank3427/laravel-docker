@@ -3,7 +3,7 @@
 set -ex
 
 #####
-# CRONTAB
+# SCHEDULER ENTRYPOINT
 #####
 
 # It must be used so that CRON can use the values of the environment variables
@@ -31,6 +31,13 @@ fi
 if [ -z "$APP_KEY" ]; then
     log "err" 'A $APP_KEY environment is required to run this container'
     exit 1
+fi
+
+if [ "$(stat -c "%U:%G" $REMOTE_SRC)" != "$DEFAULT_USER:$DEFAULT_USER" ]; then
+    log "info" "Creating $REMOTE_SRC and changing container user permission"
+
+    mkdir -p $REMOTE_SRC
+    sudo chown -R $DEFAULT_USER:$DEFAULT_USER $REMOTE_SRC
 fi
 
 echo

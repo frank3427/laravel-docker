@@ -62,12 +62,53 @@ run() {
     unset -v run_clr_reset
 }
 
-if [ "$(stat -c "%U:%G" $REMOTE_SRC)" != "$DEFAULT_USER:$DEFAULT_USER" ]; then
-    log "info" "Creating $REMOTE_SRC and changing container user permission"
+###
+## Check the connection to database
+###
+check_database_connection() {
+    echo "Attempting to connect to database ..."
 
-    mkdir -p $REMOTE_SRC
-    sudo chown -R $DEFAULT_USER:$DEFAULT_USER $REMOTE_SRC
-fi
+    case "${DB_DRIVER}" in
+        mysql)
+            prog="mysqladmin -h ${DB_HOST} -u ${DB_USERNAME} ${DB_PASSWORD:+-p$DB_PASSWORD} -P ${DB_PORT} status"
+            ;;
+        pgsql)
+            prog="/usr/bin/pg_isready"
+            prog="${prog} -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USERNAME} -d ${DB_DATABASE} -t 1"
+            ;;
+        sqlite)
+            prog="touch ${REMOTE_SRC}/database/database.sqlite"
+    esac
+
+    timeout=60
+
+    while ! ${prog} >/dev/null 2>&1
+    do
+        timeout=$(( timeout - 1 ))
+        if [[ "$timeout" -eq 0 ]]; then
+            echo
+            echo "Could not connect to database server! Aborting..."
+            exit 1
+        fi
+        echo -n "."
+        sleep 1
+    done
+    echo
+}
+
+###
+## Check connection to MySQL database
+###
+check_db_init_mysql() {
+    table=sessions
+    if [[ "$(mysql -N -s -h "${DB_HOST}" -u "${DB_USERNAME}" "${DB_PASSWORD:+-p$DB_PASSWORD}" "${DB_DATABASE}" -P "${DB_PORT}" -e \
+        "select count(*) from information_schema.tables where \
+            table_schema='${DB_DATABASE}' and table_name='${DB_PREFIX}${table}';")" -eq 1 ]]; then
+        echo "Table ${DB_PREFIX}${table} exists! ..."
+    else
+        echo "Table ${DB_PREFIX}${table} does not exist! ..."
+    fi
+}
 
 log "info" "Starting PHP-FPM configurations"
 
@@ -91,15 +132,11 @@ sed -i "/;catch_workers_output = .*/c\catch_workers_output = yes" ${PHP_FPM_POOL
 ## Laravel APP
 ####
 
-if [ -z "$APP_ENV" ]; then
-    log "err" 'A $APP_ENV environment is required to run this container'
-    exit 1
-fi
+if [ "$(stat -c "%U:%G" $REMOTE_SRC)" != "$DEFAULT_USER:$DEFAULT_USER" ]; then
+    log "info" "Creating $REMOTE_SRC and changing container user permission"
 
-# If the application key is not set, your user sessions and other encrypted data will not be secure!
-if [ -z "$APP_KEY" ]; then
-    log "err" 'A $APP_KEY environment is required to run this container'
-    exit 1
+    mkdir -p $REMOTE_SRC
+    sudo chown -R $DEFAULT_USER:$DEFAULT_USER $REMOTE_SRC
 fi
 
 if [ ! -d "vendor" ]; then
@@ -108,9 +145,25 @@ if [ ! -d "vendor" ]; then
     run "composer install --prefer-dist --no-interaction --optimize-autoloader --no-dev"
     run "composer dump-autoload --optimize"
     run "composer run-script post-root-package-install"
+    # # do not run php artisan key:generate --ansi
     # run "composer run-script post-create-project-cmd"
     run "composer run-script post-autoload-dump"
 fi
+
+if [ -z "$APP_ENV" ]; then
+    log "err" 'A $APP_ENV environment is required to run this container'
+    exit 1
+fi
+
+# If the application key is not set, your user sessions and other encrypted data will not be secure!
+if [ -z "$APP_KEY" ]; then
+    log "err" 'A $APP_KEY environment is required to run this container'
+    log "info" "INFO: Use 'APP_KEY=$(php artisan key:generate --show --no-ansi)'"
+    exit 1
+fi
+
+# NGINX FastCGI Cache
+mkdir -p $REMOTE_SRC/storage/nginx/cache
 
 run "php artisan storage:link"
 
@@ -223,8 +276,6 @@ fi
 configure_env() {
     echo "Initializing CONTAINER ..."
 
-    APP_KEY=${APP_KEY:-}
-
     if [[ "${DB_DRIVER}" = "sqlite" ]]; then
         DB_DATABASE=""
         DB_HOST=""
@@ -270,7 +321,7 @@ configure_env() {
     if [[ -z "${APP_KEY}" || "${APP_KEY}" = "null" ]]; then
         keygen="$(php artisan key:generate)"
         APP_KEY=$(echo "${keygen}" | grep -oP '(?<=\[).*(?=\])')
-        echo "ERROR: Please set the 'APP_KEY=${APP_KEY}' environment variable at runtime or in docker-compose.yml and re-launch"
+        log "err" "ERROR: Please set the 'APP_KEY=${APP_KEY}' environment variable at runtime or in docker-compose.yml and re-launch"
         exit 0
     fi
 
@@ -294,8 +345,10 @@ seed_db() {
 
 start_app() {
     configure_env
-    migrate_db
-    seed_db
+    # check_database_connection
+    # check_db_init_mysql
+    # migrate_db
+    # seed_db
 }
 
 start_app
